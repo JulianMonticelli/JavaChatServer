@@ -11,15 +11,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * @author Julian
  */
 public class ClientHandler implements Runnable {
-
-    private boolean connected;
     
     private Socket sock;
     private PrintWriter out;
@@ -37,34 +33,36 @@ public class ClientHandler implements Runnable {
         } catch (IOException ex) {
             ex.printStackTrace(); // lazily output exceptions
         }
-        connected = true;
     }
     
     public void send(String string) {
-        // Might need some code here to fix this
         out.println(string);
     }
     
+    @Override
     public void run() {
         String buffer;
         try {
             while ((buffer = in.readLine()) != null) {
                 serverReference.registerMessage(this, buffer);
             }
-            connected = false;
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("An IOException occurred while handling client "
+                + getClientName());
         } finally {
             serverReference.removeClient(this);
+            out.close();
+            try {
+                in.close();
+            } catch (IOException ex) {
+                System.out.println("Some error occurred trying to close a"
+                        + " ClientHandler BufferedReader.");
+            }
         }
     }
     
     public String getClientName() {
-        return sock.getInetAddress().getHostAddress();// Lazy
-    }
-    
-    public boolean isToBeRemoved() {
-        return !connected;
+        return sock.getInetAddress().getHostAddress(); // Lazy
     }
 
 }

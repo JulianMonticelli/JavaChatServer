@@ -9,14 +9,11 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.InputMismatchException;
+import java.util.Collections;
+import java.util.List;
 import java.util.Random;
-import java.util.concurrent.locks.Lock;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  *
@@ -28,13 +25,12 @@ public class ChatServer {
     private static InetAddress HOST;
     private static final int PORT = 6161;
     
-    private final Object clLock = new Object(); 
     
     private boolean running = false;
     
     private Random rand = new Random(); // For RNG chat commands
     
-    private ArrayList<ClientHandler> clientList = new ArrayList<>();
+    private final List<ClientHandler> clientList;
     
     public ChatServer() {
         try {
@@ -43,7 +39,10 @@ public class ChatServer {
             System.err.println("Failed to get local host");
             System.exit(-1);
         }
-        running = true;
+        
+        clientList  = Collections.synchronizedList(new ArrayList<>());
+        
+        running = true;        
     }
     
     public void run() {
@@ -63,25 +62,31 @@ public class ChatServer {
         }
     }
     
+    /***************************************************************************
+     * Add a client to the client list
+     * @param clientHandler A reference to the ClientHandler we are adding
+     */
     private void addClient(ClientHandler clientHandler) {
-        synchronized(clLock) {
+        
+        synchronized(clientList) {
             clientList.add(clientHandler);
-            String joinMessage = clientHandler.getClientName() + " has joined the server.";
-            System.out.println(joinMessage);
-            for (ClientHandler client : clientList) {
-                client.send(joinMessage);
-            }
         }
+        String joinMessage = clientHandler.getClientName() + " has joined"
+                    + " the server.";
+        
+        broadcastMessage(joinMessage);
     }
 
+    /***************************************************************************
+     * Remove a client from the client list
+     * @param clientHandler A reference to the ClientHandler we are removing
+     */
     public void removeClient(ClientHandler clientHandler) {
-        synchronized (clLock) {
+        synchronized(clientList) {
             clientList.remove(clientHandler);
-            System.out.println(clientHandler.getClientName() + "has left the server.");
-            for (ClientHandler client : clientList) {
-                client.send("");
-            }
         }
+        String message = clientHandler.getClientName() + " has left the server.";
+        broadcastMessage(message);
     }
     
     public void registerMessage(ClientHandler clientHandler, String message) {
@@ -107,7 +112,7 @@ public class ChatServer {
         if (command.equalsIgnoreCase("who")){
             // TODO: Add chat filtering
             StringBuilder sb = new StringBuilder();
-            synchronized (clLock) {
+            synchronized (clientList) {
                 System.out.println(clientHandler.getClientName() + " performed a /who command");
                 sb.append("\nOnline users:\n---------------\n\n");
                 for (ClientHandler client : clientList) {
@@ -159,25 +164,28 @@ public class ChatServer {
             broadcastMessage(clientHandler.getClientName() + " has flipped a "
             + res + ".");
         }
+        else if (command.equalsIgnoreCase("disconnect")) {
+            clientHandler.send("goodbye:)");
+        }
     }
     
+    /***************************************************************************
+     * Broadcast a message to the client list
+     * @param message A message to broadcast
+     */
     private void broadcastMessage(String message) {
-        synchronized (clLock) {
+        synchronized (clientList) {
             System.out.println(message);
-            for (ClientHandler client : clientList) {
+                clientList.forEach((client) -> {
                 client.send(message);
-            }
+            });
         }
     }
     
-    private void broadcastMessageFromClient(ClientHandler clientHandler, String message) {
-        String clientName = clientHandler.getClientName();
-        synchronized (clLock) {
-            System.out.println(clientName + ": " + message);
-            for (ClientHandler client : clientList) {
-                client.send(clientName + ": " + message);
-            }
-        }
+    private void broadcastMessageFromClient(ClientHandler clientHandler, 
+            String message) {
+        String newMessage = clientHandler.getClientName() + ": " + message;
+        broadcastMessage(newMessage);
     }
     
     
