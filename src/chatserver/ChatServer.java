@@ -21,6 +21,9 @@ import java.util.Random;
  */
 public class ChatServer {
 
+    private static final String OPCODE_USER_MSG = "<UMSG>";
+    private static final String OPCODE_DISCONNECT = "<BYE>";
+    private static final String OPCODE_RAW_TEXT = "<RAW>";
     
     private static InetAddress HOST;
     private static final int PORT = 6161;
@@ -53,7 +56,6 @@ public class ChatServer {
             while (running) {
                 Socket newClient = sock.accept();
                 ClientHandler client = new ClientHandler(newClient, this);
-                addClient(client);
                 new Thread(client).start();
             }
         } catch (IOException ex) {
@@ -66,7 +68,7 @@ public class ChatServer {
      * Add a client to the client list
      * @param clientHandler A reference to the ClientHandler we are adding
      */
-    private void addClient(ClientHandler clientHandler) {
+    public void addClient(ClientHandler clientHandler) {
         
         synchronized(clientList) {
             clientList.add(clientHandler);
@@ -74,7 +76,7 @@ public class ChatServer {
         String joinMessage = clientHandler.getClientName() + " has joined"
                     + " the server.";
         
-        broadcastMessage(joinMessage);
+        broadcastMessage(OPCODE_RAW_TEXT, joinMessage);
     }
 
     /***************************************************************************
@@ -86,9 +88,15 @@ public class ChatServer {
             clientList.remove(clientHandler);
         }
         String message = clientHandler.getClientName() + " has left the server.";
-        broadcastMessage(message);
+        broadcastMessage(OPCODE_RAW_TEXT, message);
     }
     
+    /***************************************************************************
+     * Register input from a client thread and route it appropriately
+     * @param clientHandler A reference to the ClientHandler registering the 
+     * message
+     * @param message The message to be registered from the client
+     */
     public void registerMessage(ClientHandler clientHandler, String message) {
         if (message.startsWith("/")) {
             handleClientCommand(clientHandler, message);
@@ -114,6 +122,7 @@ public class ChatServer {
             StringBuilder sb = new StringBuilder();
             synchronized (clientList) {
                 System.out.println(clientHandler.getClientName() + " performed a /who command");
+                sb.append(OPCODE_RAW_TEXT);
                 sb.append("\nOnline users:\n---------------\n\n");
                 for (ClientHandler client : clientList) {
                     sb.append(client.getClientName() + "\n");
@@ -133,17 +142,18 @@ public class ChatServer {
                     maxRoll = Integer.parseInt(commandArgs[2]);
                 }
             } catch (NumberFormatException e) {
-                clientHandler.send("Roll requires either no arguments, or valid"
-                        + " numerical values to operate.");
+                clientHandler.send(OPCODE_RAW_TEXT + "Roll requires either no "
+                        + "arguments, or valid numerical values to operate.");
                 return;
             }
             if (minRoll < 0 || maxRoll < 0) {
-                clientHandler.send("Roll cannot accept negative integers.");
+                clientHandler.send(OPCODE_RAW_TEXT + "Roll cannot accept "
+                        + "negative integers.");
                 return;
             }
             if (minRoll == maxRoll) {
-                clientHandler.send("The minimum roll value cannot be the "
-                        + "maximum roll value.");
+                clientHandler.send(OPCODE_RAW_TEXT + "The minimum roll value "
+                        + "cannot be the maximum roll value.");
                 return;
             }
             // Fix minRoll and maxRoll if necessary
@@ -155,17 +165,17 @@ public class ChatServer {
             
             int roll = rand.nextInt(maxRoll) + minRoll;
             
-            broadcastMessage(clientHandler.getClientName() + " has rolled a "
-                    + roll + " (" + minRoll + "-" + maxRoll + ")");
+            broadcastMessage(OPCODE_RAW_TEXT, clientHandler.getClientName()
+                    + " has rolled a " + roll + " (" + minRoll + "-" + maxRoll + ")");
         }
         
         else if (command.equalsIgnoreCase("flip")) {
             String res = rand.nextBoolean() ? "heads" : "tails";
-            broadcastMessage(clientHandler.getClientName() + " has flipped a "
-            + res + ".");
+            broadcastMessage(OPCODE_RAW_TEXT, clientHandler.getClientName()
+                    + " has flipped a " + res + ".");
         }
         else if (command.equalsIgnoreCase("disconnect")) {
-            clientHandler.send("goodbye:)");
+            clientHandler.send(OPCODE_DISCONNECT);
         }
     }
     
@@ -173,19 +183,25 @@ public class ChatServer {
      * Broadcast a message to the client list
      * @param message A message to broadcast
      */
-    private void broadcastMessage(String message) {
+    private void broadcastMessage(String opcode, String message) {
         synchronized (clientList) {
             System.out.println(message);
                 clientList.forEach((client) -> {
-                client.send(message);
+                client.send(opcode + message);
             });
         }
     }
     
+    /***************************************************************************
+     * Broadcast a message from the client with the client name prepending 
+     * the message String
+     * @param clientHandler A reference to the ClientHandler sending the message
+     * @param message The message that was sent by the client
+     */
     private void broadcastMessageFromClient(ClientHandler clientHandler, 
             String message) {
         String newMessage = clientHandler.getClientName() + ": " + message;
-        broadcastMessage(newMessage);
+        broadcastMessage(OPCODE_USER_MSG, newMessage);
     }
     
     
