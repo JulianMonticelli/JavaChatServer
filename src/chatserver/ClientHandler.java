@@ -11,6 +11,13 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 
 
 /**
@@ -40,10 +47,40 @@ public class ClientHandler implements Runnable {
         }
     }
     
-    public void send(String string) {
-        out.println(encHandler.encryptMessage(string));
+    /***************************************************************************
+     * Sends a client a message with an RSA-secured symmetric key.
+     * @param string A String message to encrypt and send to the client.
+     */
+    public void send(byte[] key, String string) {
+        try {
+            out.println(encHandler.encodeMessage(key, string));
+        } catch (Exception e) {
+            e.printStackTrace();
+            closeConnection();
+        }
     }
     
+    /***************************************************************************
+     * A convenience function for encrypting a message to send to the client,
+     * and then sending it - this should only be used for SINGLE messages to
+     * SINGLE clients. Client broadcast messages should include a key to save
+     * the extra overhead of generating n AES keys.
+     * @param string A String message to encrypt and send to the client.
+     */
+    public void send(String string) {
+        byte[] key = EncryptionHandler.getNewAESKey();
+        try {
+            out.println(encHandler.encodeMessage(key, string));
+        } catch (Exception e) {
+            e.printStackTrace();
+            closeConnection();
+        }
+    }
+    
+    /***************************************************************************
+     * The main bulk of code for the program thread. Will first exchange public
+     * keys with the client, and then begin looping for input from the client.
+     */
     @Override
     public void run() {
         String buffer;
@@ -75,7 +112,13 @@ public class ClientHandler implements Runnable {
         
         try {
             while ((buffer = in.readLine()) != null) {
-                serverReference.registerMessage(this, encHandler.decryptMessage(buffer));
+                try {
+                    serverReference.registerMessage(this,
+                            encHandler.decipherMessage(buffer));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    closeConnection();
+                }
             }
         } catch (IOException e) {
             System.out.println("An IOException occurred while handling client "
@@ -85,6 +128,9 @@ public class ClientHandler implements Runnable {
         }
     }
     
+    /***************************************************************************
+     * Close the connection of the client who belongs to this thread.
+     */
     public void closeConnection() {
         serverReference.removeClient(this);
         out.close();
@@ -96,6 +142,10 @@ public class ClientHandler implements Runnable {
         }
     }
     
+    /***************************************************************************
+     * Get the String name of the client
+     * @return name of the client as a String
+     */
     public String getClientName() {
         return sock.getInetAddress().getHostAddress(); // Lazy
     }
