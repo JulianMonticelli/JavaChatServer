@@ -33,8 +33,8 @@ public class EncryptionHandler {
     
     public static final int SYM_BLOCK_SIZE = 128;
     
-    public static final String ASYM_ENC_ALG = "RSA";
-    public static final String SYM_ENC_ALG = "AES";
+    private static final String ASYM_ENC_ALG = "RSA";
+    private static final String SYM_ENC_ALG = "AES";
     
     
     public static final String PUBLIC_KEY_PREFIX = "!!PUBK:";

@@ -11,13 +11,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 
 
 /**
@@ -78,26 +71,30 @@ public class ClientHandler implements Runnable {
     }
     
     /***************************************************************************
-     * The main bulk of code for the program thread. Will first exchange public
-     * keys with the client, and then begin looping for input from the client.
+     * Initiates a connection with a client, first exchanging public keys and
+     * then adds the client to the server list.
+     * @return whether or not the connection was successful
      */
-    @Override
-    public void run() {
+    private boolean initiateClientConnection() {
         String buffer;
         
         try {
             while ((buffer = in.readLine()) != null) {
-                if (!buffer.startsWith("!!PUBK:")) {
+                
+                // Verify that the first message at least appears to be a valid
+                // public key according to how the 
+                if (!buffer.startsWith(EncryptionHandler.PUBLIC_KEY_PREFIX)) {
                     closeConnection();
-                    return;
+                    return false;
                 } else {
-                    String pubKey = buffer.substring(7);
+                    String pubKey = buffer.substring(
+                            EncryptionHandler.PUBLIC_KEY_PREFIX.length());
                     try {
                         encHandler.initEncryptionHandler(pubKey);
                     } catch (Exception e) {
                         e.printStackTrace();
                         closeConnection();
-                        return;
+                        return false;
                     }
                 }
                 out.println(encHandler.generatePublicKeyMessage());
@@ -107,8 +104,20 @@ public class ClientHandler implements Runnable {
         } catch (IOException ex) {
             ex.printStackTrace();
             closeConnection();
-            return;
+            return false;
         }
+        return true;
+    }
+    
+    
+    /***************************************************************************
+     * Run the client listener, looping for messages from the client. If the
+     * client disconnects gracefully or in a non-graceful manner, the client
+     * is removed from the server client list.
+     */
+    private void runClientListener() {
+        
+        String buffer;
         
         try {
             while ((buffer = in.readLine()) != null) {
@@ -127,6 +136,22 @@ public class ClientHandler implements Runnable {
             closeConnection();
         }
     }
+    
+    /***************************************************************************
+     * The main bulk of code for the program thread. Will first exchange public
+     * keys with the client, and then begin looping for input from the client.
+     */
+    @Override
+    public void run() {
+        
+        // Handle dealing with connecting a client
+        boolean connectionSuccessful = initiateClientConnection();
+        
+        if (connectionSuccessful) {
+            runClientListener();
+        }
+    }
+    
     
     /***************************************************************************
      * Close the connection of the client who belongs to this thread.
